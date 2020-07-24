@@ -2,6 +2,8 @@ import { observable, action, computed, configure, runInAction } from "mobx";
 import { createContext, SyntheticEvent } from "react";
 import { IActivity } from "./../models/activity";
 import { Activities } from "../api/agent";
+import { history } from "./../../index";
+import { toast } from "react-toastify";
 
 configure({ enforceActions: "always" });
 
@@ -20,11 +22,11 @@ class ActivityStore {
 
   groupActivitiesByDate(activities: IActivity[]) {
     const sortedActivities = activities.sort(
-      (a, b) => Date.parse(a.date) - Date.parse(b.date)
+      (a, b) => a.date!.getTime() - b.date!.getTime()
     );
     return Object.entries(
       sortedActivities.reduce((activities, activity) => {
-        const date = activity.date.split("T")[0];
+        const date = activity.date.toISOString().split("T")[0];
         activities[date] = activities[date]
           ? [...activities[date], activity]
           : [activity];
@@ -33,13 +35,13 @@ class ActivityStore {
     );
   }
 
-  @action loadActivities = async () => {  
+  @action loadActivities = async () => {
     this.loadingInitial = true;
     try {
       const activities = await Activities.list();
       runInAction("loading activities", () => {
         activities.forEach((value) => {
-          value.date = value.date.split(".")[0];
+          value.date = new Date(value.date!);
           this.activityRegistry.set(value.id, value);
         });
       });
@@ -56,14 +58,18 @@ class ActivityStore {
     let activity = this.getActivity(id);
     if (activity) {
       this.activity = activity;
+      return activity;
     } else {
       this.loadingInitial = true;
       try {
         activity = await Activities.details(id);
         runInAction("getting activity", () => {
+          activity.date = new Date(activity.date);
           this.activity = activity;
+          this.activityRegistry.set(activity.id, activity);
           this.loadingInitial = false;
         });
+        return activity;
       } catch (error) {
         runInAction("load activity error", () => {
           this.loadingInitial = false;
@@ -84,7 +90,9 @@ class ActivityStore {
       runInAction("creat activity", () => {
         this.activityRegistry.set(activity.id, activity);
       });
+      history.push(`/activities/${activity.id}`);
     } catch (error) {
+      toast.error("problem submitting form");
       console.log(error);
     } finally {
       runInAction("create activity finally", () => {
@@ -101,7 +109,9 @@ class ActivityStore {
         this.activityRegistry.set(activity.id, activity);
         this.activity = activity;
       });
+      history.push(`/activities/${activity.id}`);
     } catch (error) {
+      toast.error("problem submitting form");
       console.log(error);
     } finally {
       runInAction("edit activity finally", () => {
